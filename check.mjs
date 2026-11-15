@@ -83,9 +83,10 @@ const once = _internal.withCanary([sys(_internal.CANARY), { role: "user", conten
 ok(once.length === 2, "a message that already carries the canary is not doubled")
 ok(_internal.withCanary(undefined).length === 1, "a body with no messages still gets the canary")
 
-console.log("what Perch is allowed to see")
-// Every string the harness puts in a prompt, plus the two runtime-context lines.
-const branded = [
+console.log("the host's own boilerplate, and only that")
+// Every fixed sentence the harness puts in a system prompt, plus the two
+// runtime-context lines.
+const boilerplate = [
   "You are an AI agent powered by DeepSeek Harness.",
   "The runtime context names the DeepSeek Harness implementation checkout. The checkout location and current working directory are separate values and may differ; never infer the working directory from the checkout path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.",
   'You are interacting with the user through the DeepSeek Harness Web GUI whose URL the runtime context names. When the user refers to "this page", they mean this GUI.',
@@ -94,33 +95,53 @@ const branded = [
   'Current DeepSeek Harness implementation checkout: "D:\\\\dsh".',
   'Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:57457".',
 ]
-for (const text of branded) {
-  const out = _internal.unbrand(text)
-  ok(!/DeepSeek Harness/.test(out), `no brand left in: ${text.slice(0, 46)}…`)
+for (const text of boilerplate) {
+  const out = _internal.stripBoilerplate(text)
+  ok(!/DeepSeek Harness/.test(out), `no boilerplate left in: ${text.slice(0, 46)}…`)
+  ok(!/\bDSH\b/.test(out), `no bare DSH left in: ${text.slice(0, 46)}…`)
 }
-ok(!/\bDSH\b/.test(_internal.unbrand(branded[1])), "no bare DSH left either")
-ok(_internal.unbrand('Current DeepSeek Harness implementation checkout: "D:\\\\dsh".').includes('"D:\\\\dsh"'), "the checkout path survives")
-ok(_internal.unbrand('Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:57457".').includes("57457"), "the GUI URL survives")
-ok(_internal.unbrand("Set DSH_HOME, then run pnpm dsh --profile web; window.__DSH_BOOT__ is injected.") === "Set DSH_HOME, then run pnpm dsh --profile web; window.__DSH_BOOT__ is injected.", "identifiers containing DSH are left alone")
-ok(_internal.unbrand("Read AGENTS.md, then run `dsh web`.") === "Read AGENTS.md, then run `dsh web`.", "ordinary text passes through untouched")
+ok(_internal.stripBoilerplate('Current DeepSeek Harness implementation checkout: "D:\\\\dsh".').includes('"D:\\\\dsh"'), "the checkout path survives")
+ok(_internal.stripBoilerplate('Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:57457".').includes("57457"), "the GUI URL survives")
+ok(_internal.stripBoilerplate("Set DSH_HOME, then run pnpm dsh --profile web; window.__DSH_BOOT__ is injected.") === "Set DSH_HOME, then run pnpm dsh --profile web; window.__DSH_BOOT__ is injected.", "identifiers containing DSH are left alone")
+ok(_internal.stripBoilerplate("Read AGENTS.md, then run `dsh web`.") === "Read AGENTS.md, then run `dsh web`.", "ordinary text passes through untouched")
 
-// The rewrite reaches the wire: messages, text parts, and tool descriptions.
+// The user's own words are never edited, in any role, and neither are tool schemas.
+const userWords = [
+  { role: "user", content: "Why does DeepSeek Harness rewrite my prompt? And what is DSH?" },
+  { role: "assistant", content: "DeepSeek Harness is the program you are talking to." },
+  { role: "tool", content: "DSH_HOME=C:\\dsh\nDeepSeek Harness 0.1.0" },
+]
+for (const message of userWords) {
+  ok(_internal.stripSystemBoilerplate([message])[0] === message, `a message with role ${message.role} is left exactly as it came in`)
+}
+const toolSchema = [{ type: "function", function: { name: "read", description: "Reads a file. Powered by DeepSeek Harness.", parameters: {} } }]
+const toolSent = _internal.callBody({ messages: [{ role: "user", content: "hi" }], tools: toolSchema }, null)
+ok(toolSent.request.tools[0].function.description === "Reads a file. Powered by DeepSeek Harness.", "a tool description is not rewritten")
+ok(JSON.stringify(toolSent.request.tools) === JSON.stringify(toolSchema), "tool schemas travel byte for byte")
+
+// The rewrite reaches the wire, and only through a system message.
 const sent = _internal.callBody(
   {
     messages: [
       { role: "system", content: "You are an AI agent powered by DeepSeek Harness." },
-      { role: "user", content: [{ type: "text", text: 'Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:57457".' }] },
+      { role: "user", content: "Which program am I talking to? Is it DeepSeek Harness?" },
     ],
-    tools: [{ type: "function", function: { name: "read", description: "Reads a file. Powered by DeepSeek Harness.", parameters: {} } }],
   },
   null,
 )
-const wire = JSON.stringify(sent.request)
-ok(!wire.includes("DeepSeek Harness"), "nothing branded reaches the request body")
-ok(wire.includes("http://127.0.0.1:57457"), "the URL in the rewritten line is intact")
-ok(sent.request.messages[2].content[0].text.startsWith("Current Web GUI URL:"), "a text part is rewritten in place")
-ok(sent.request.tools[0].function.name === "read", "the tool keeps its name")
-ok(!JSON.stringify(_internal.unbrandTools([{ description: "x" }])).includes("undefined"), "rewriting tools keeps the JSON valid")
+ok(sent.request.messages[0].content.startsWith("Source discrimination:"), "the canary still comes first")
+ok(sent.request.messages[1].content === "You are an AI agent.", "the host's opener is rewritten")
+ok(sent.request.messages[2].content === "Which program am I talking to? Is it DeepSeek Harness?", "the user's own question reaches Perch unchanged")
+const runtime = _internal.callBody(
+  {
+    messages: [
+      { role: "system", content: [{ type: "text", text: 'Current DeepSeek Harness Web GUI URL: "http://127.0.0.1:57457".' }] },
+    ],
+  },
+  null,
+)
+ok(runtime.request.messages[1].content[0].text.startsWith("Current Web GUI URL:"), "a text part is rewritten in place")
+ok(runtime.request.messages[1].content[0].text.includes("http://127.0.0.1:57457"), "the URL in the rewritten line is intact")
 
 console.log("starter models")
 const starters = ["deepseek-flash-starter", "glm-5.3-flash-starter", "beam-1.0-starter"]
