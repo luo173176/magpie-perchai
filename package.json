@@ -1,0 +1,29 @@
+{
+  "name": "@magpie-community/opencode-perchai-auth",
+  "version": "0.1.0",
+  "description": "Perch (perchai.app) as a magpie provider: its terminal model-call API translated to OpenAI chat completions.",
+  "type": "module",
+  "main": "./opencode.mjs",
+  "exports": {
+    ".": "./opencode.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "opencode.mjs",
+    "bridge.py",
+    "README.md"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "opencode",
+    "perchai",
+    "perch"
+  ],
+  "license": "MIT",
+  "magpie": {
+    "icon": "https://chat.perchai.app/favicon.ico",
+    "name": "Perch",
+    "summary": "Perch (perchai.app) accounts as a magpie provider"
+  }
+}
