@@ -177,8 +177,8 @@ const session = {
 const cookieValue = `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`
 const half = Math.ceil(cookieValue.length / 2)
 const rows = [
-  { name: "sb-abcdefghij-auth-token.0", value: cookieValue.slice(0, half) },
-  { name: "sb-abcdefghij-auth-token.1", value: cookieValue.slice(half) },
+  { name: "sb-abcdefghij-auth-token.0", value: cookieValue.slice(0, half), host_key: "app.perchai.app" },
+  { name: "sb-abcdefghij-auth-token.1", value: cookieValue.slice(half), host_key: "app.perchai.app" },
 ]
 const fromJar = _internal.sessionFromCookie(rows)
 ok(fromJar?.access === "access-abc", "a split session cookie joins back into the access token")
@@ -188,10 +188,30 @@ ok(fromJar?.accountId === "me@example.com", "…and carries the account's email"
 ok(fromJar?.uid === "u-7", "…and the user id")
 ok(fromJar?.source === "desktop", "…and says where it came from")
 ok(_internal.sessionFromCookie([]) === null, "an empty jar has no session")
-ok(_internal.sessionFromCookie([{ name: "unrelated", value: "x".repeat(64) }]) === null, "unrelated cookies are ignored")
-ok(_internal.sessionFromCookie([{ name: "sb-abcdefghij-auth-token.0", value: "base64-not-json" }]) === null, "an unreadable value yields no session")
-ok(_internal.sessionFromCookie([{ name: "sb-abcdefghij-auth-token.0", value: `base64-${Buffer.from("{}").toString("base64url")}` }]) === null, "a session without an access token is refused")
+ok(_internal.sessionFromCookie([{ name: "unrelated", value: "x".repeat(64), host_key: "app.perchai.app" }]) === null, "unrelated cookies are ignored")
+ok(_internal.sessionFromCookie([{ name: "sb-abcdefghij-auth-token.0", value: "base64-not-json", host_key: "app.perchai.app" }]) === null, "an unreadable value yields no session")
+ok(_internal.sessionFromCookie([{ name: "sb-abcdefghij-auth-token.0", value: `base64-${Buffer.from("{}").toString("base64url")}`, host_key: "app.perchai.app" }]) === null, "a session without an access token is refused")
 ok(Array.isArray(_internal.cookieStores()), "the cookie stores are enumerable")
+// Only Perch's own cookies count: another site's Supabase session in the same
+// jar must not be joined, renewed, or sent anywhere.
+ok(
+  _internal.sessionFromCookie(rows.map((r) => ({ ...r, host_key: "some-other-site.example" }))) === null,
+  "another site's session in the same jar is refused",
+)
+ok(
+  _internal.sessionFromCookie(rows.map((r) => ({ ...r, host_key: ".perchai.app" })))?.access === "access-abc",
+  "a leading dot still marks Perch's domain",
+)
+ok(
+  _internal.sessionFromCookie([
+    { name: "sb-abcdefghij-auth-token.0", value: cookieValue, host_key: "evil-perchai.app" },
+  ]) === null,
+  "a lookalike host is not Perch",
+)
+ok(
+  _internal.cookieStores().every((p) => /perch/i.test(p)),
+  "only Perch's own jars are listed, never a browser profile",
+)
 
 // The desktop app writes the same session file into its own user-data folder
 // instead of ~/.perch, so both paths have to be read.
