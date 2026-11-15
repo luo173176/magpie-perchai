@@ -93,6 +93,20 @@ Four details of the request shape are load-bearing, and all four are what the CL
   get suspended for. The record is filed after the answer has gone out, so a caller never waits on
   it, and a failed filing never fails the turn.
 
+## What the caller's host name is replaced with
+
+The harness that drives this plugin writes its own product name into the system prompt — an opener,
+a paragraph about its source checkout, a paragraph about its web GUI, and two runtime-context lines
+carrying the checkout path and the GUI URL. None of that is anything Perch needs to read, so every
+string that leaves for Perch goes through `unbrand()` first: messages, tool descriptions, and the
+prompt filed with the turn record.
+
+Only the product name is rewritten. Paths, URLs, commands and identifiers are left exactly as they
+are — `dsh web`, `pnpm dsh`, `DSH_HOME` and `window.__DSH_BOOT__` all survive untouched, because the
+rewrite matches whole phrases and, for the bare acronym, requires a word boundary that an underscore
+does not satisfy. The full list of replacements is the `BRAND` table in `index.mjs`; anything it does
+not match passes through byte for byte.
+
 ## Accounts Perch has suspended
 
 Perch suspends accounts it believes are being driven through another app or tool. A suspended
