@@ -306,45 +306,6 @@ const rtext = await restart.text()
 const rframes = rtext.split("\n\n").filter(Boolean).map((f) => f.replace(/^data: /, "")).slice(0, -1).map((f) => JSON.parse(f))
 ok(rframes.filter((f) => f.choices[0]?.delta?.content).map((f) => f.choices[0].delta.content).join("") === "partialfinal", "a restart appends rather than retracts")
 
-console.log("the turn record")
-ok(/^cli-cwd-[0-9a-f]{16}$/.test(_internal.threadId()), "the thread id is the CLI's cli-cwd shape")
-ok(_internal.lastUserText([{ role: "user", content: "hi" }]) === "hi", "the prompt is the last user message")
-ok(_internal.lastUserText([{ role: "user", content: "a" }, { role: "assistant", content: "x" }, { role: "user", content: "b" }]) === "b", "…the last one, not the first")
-ok(_internal.lastUserText([{ role: "user", content: [{ type: "text", text: "a" }, { type: "image_url", image_url: { url: "x" } }, { type: "text", text: "b" }] }]) === "a\nb", "…flattened from content parts")
-ok(_internal.lastUserText([]) === "", "no user message is an empty prompt")
-ok((await _internal.reportTurn("", { runId: "cli-turn-1-a" })) === false, "no token files nothing")
-ok((await _internal.reportTurn("tok", {})) === false, "no runId files nothing")
-
-// a filed turn is what the caller sees nothing of: the answer goes out first
-const filed = []
-const seen = []
-const filedRes = await _internal.openai(
-  { model: "claude-opus-5.5", stream: true },
-  _internal.events(sse([
-    { type: "answer_delta", text: "Hel" },
-    { type: "answer_delta", text: "lo" },
-    { type: "done", ok: true, text: "Hello" },
-  ])),
-  undefined,
-  (t) => {
-    seen.push(t)
-    return Promise.resolve(true)
-  },
-)
-await filedRes.text()
-ok(seen.length === 1, "a streamed turn files exactly one record")
-ok(seen[0].status === "completed", "…as completed")
-ok(seen[0].assistantText === "Hello", "…carrying the answer")
-ok(typeof seen[0].durationMs === "number", "…and how long it took")
-
-const badSeen = []
-await (await _internal.openai({ model: "m" }, _internal.events(sse([{ type: "done", ok: false, error: "nope" }])), undefined, (t) => {
-  badSeen.push(t)
-  return Promise.resolve(true)
-})).text()
-ok(badSeen[0]?.status === "error", "a refused turn files as failed")
-ok(badSeen[0]?.error === "nope", "…with the reason")
-
 // ---- the quota panel ----------------------------------------------------------------
 // The live meter is what the desktop app's account page shows; POST /usage without
 // run ids reports zero, so the meter is what the panel is built from.

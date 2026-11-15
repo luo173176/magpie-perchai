@@ -74,7 +74,7 @@ are translated into OpenAI's:
 | `stream_restart` | the text restarts (streaming can only append, so a restart continues) |
 | `error` / `done.ok:false` | an `error` frame |
 
-Four details of the request shape matter, and all four are simply what Perch's own CLI sends — the
+Three details of the request shape matter, and all three are simply what Perch's own CLI sends — the
 endpoint is written for that one client and refuses requests that do not match it:
 
 - **No `lane` inside `request`.** `lane` sits beside `request`. A `lane` on the request itself is
@@ -87,10 +87,11 @@ endpoint is written for that one client and refuses requests that do not match i
 - **A turn ticket.** Each turn mints one at `/api/perch-terminal/turn-ticket`, runs the call under
   the ticket's `runId`, and sends the ticket back as `x-perch-turn-ticket`. A turn without one still
   goes out, the way the CLI sends it when no ticket can be minted.
-- **A `cli-turn` record per turn.** After every call — answered or refused, streaming or not — the
-  turn is filed at `POST /api/perch-terminal/cli-turn` with the prompt, the answer, the thread id
-  (`cli-cwd-<sha256(cwd)[:16]>`), the run id and the duration. The record is filed after the answer
-  has gone out, so a caller never waits on it, and a failed filing never fails the turn.
+
+Nothing else of the CLI's is imitated. In particular the plugin does **not** file the
+`cli-turn` record the CLI writes after every turn: that record carries the user's prompt and the
+answer back to Perch, and sending a transcript the user did not ask to send is not this plugin's
+business. So Perch sees the model calls and nothing else.
 
 ## The host's own boilerplate is rewritten out
 
@@ -126,7 +127,7 @@ already too late.
 **This is the risk you take by installing this.** Perch's terms cover its own apps; a plugin that
 drives the same endpoint from magpie is not one of them, and the account it drives can be suspended
 for it. That is Perch's decision to make, not something this plugin can argue with or work around.
-The four details above are there because the endpoint only serves its own client, not to disguise
+The three details above are there because the endpoint only serves its own client, not to disguise
 who is calling — if you need hosted models under terms that allow third-party clients, use Perch's
 BYOK path (`models.byok.enabled`) with your own provider key, or a provider that offers an API.
 
